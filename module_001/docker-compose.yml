@@ -1,0 +1,130 @@
+version: "3"
+
+services:
+    
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop2.7.4-java8
+    container_name: namenode
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "9000:9000"
+      - "10070:50070"
+
+  datanode:
+    image: dlpgft/datanode:hadoop2.7.4-0.2
+    container_name: datanode
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:50070"
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "10075:50075"
+  
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop2.7.4-java8
+    container_name: resourcemanager
+    environment:
+      SERVICE_PRECONDITION: "namenode:50070 datanode:50075"
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "8088:8088"
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop2.7.4-java8
+    container_name: nodemanager
+    environment:
+      SERVICE_PRECONDITION: "namenode:50070 datanode:50075 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "8042:8042"
+  
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop2.7.4-java8
+    container_name: historyserver
+    environment:
+      SERVICE_PRECONDITION: "namenode:50070 datanode:50075 resourcemanager:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "8188:8188"
+      
+  hive-server:
+    image: dlpgft/hive_server_sqoop:hadoop2.7.4-0.1
+    container_name: hiveserver
+    env_file:
+      - ./hadoop.env
+    environment:      
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+      SQOOP_HOME: /opt/sqoop
+      HIVE_CONF_DIR: /opt/hive/conf      
+    domainname: hadoop
+    ports:
+      - "10000:10000"
+      
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hivemetastore
+    env_file:
+      - ./hadoop.env
+    command: /opt/hive/bin/hive --service metastore
+    domainname: hadoop
+    environment:           
+      SERVICE_PRECONDITION: "namenode:50070 datanode:50075 hive-metastore-postgresql:5432"
+    depends_on:
+      - namenode
+      - hive-metastore-postgresql
+    ports:
+      - "9083:9083"      
+      
+  hive-metastore-postgresql:
+    image: dlpgft/postgresql_metastore:0.30
+    container_name: hivemetastorepostgresql
+    ports:
+      - "5432:5432"
+    
+  nifi:
+    image: apache/nifi:latest
+    container_name: nifi
+    restart: always
+    ports:
+      - 8080:8080
+    volumes:
+      - ./shared:/tmp/shared
+      - ./zeppelin/nyc_data:/tmp/nyc_data
+
+  nifi-registry:
+    image: apache/nifi-registry:latest
+    container_name: nifiregistry
+    restart: always
+    ports:
+      - 18080:18080
+  
+  zeppelin:
+    container_name: zeppelin
+    image: apache/zeppelin:0.8.1
+    environment:
+      HADOOP_CONF_DIR: "/tmp/shared"
+    ports: 
+      - 9999:8080
+    volumes:
+      - ./shared:/tmp/shared
+      - ./zeppelin/nyc_data:/zeppelin/nyc_data
+      - ./zeppelin/notebook:/zeppelin/notebook
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
+  portainer_data:  
